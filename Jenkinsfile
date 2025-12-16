@@ -1,5 +1,4 @@
-@'
-pipeline {
+﻿pipeline {
   agent any
 
   tools {
@@ -8,11 +7,10 @@ pipeline {
   }
 
   stages {
-    stage("Compile") {
+    stage('Compile') {
       steps {
-        bat "mvn -B clean compile"
+        bat 'mvn -B clean compile'
       }
     }
   }
 }
-'@ | Set-Content -Encoding utf8 Jenkinsfile
