@@ -8,16 +8,9 @@ pipeline {
   }
 
   stages {
-    stage('GIT') {
+    stage("Compile") {
       steps {
-        git branch: 'master',
-            url: 'https://github.com/hwafa/timesheetproject.git'
-      }
-    }
-
-    stage('Compile Stage') {
-      steps {
-        bat 'mvn clean compile'
+        bat "mvn -B clean compile"
       }
     }
   }
