@@ -17,26 +17,24 @@ pipeline {
     DOCKER_CREDS_ID = 'dockerhub-creds'
     K8S_NAMESPACE = 'devops'
     SONAR_HOST_URL = 'http://192.168.56.10:9000'
+
+    DOCKER_HOST = 'unix:///var/run/docker.sock'
+    DOCKER_TLS_VERIFY = ''
+    DOCKER_CERT_PATH = ''
   }
 
   stages {
     stage('Checkout') {
-      steps {
-        checkout scm
-      }
+      steps { checkout scm }
     }
 
     stage('Build Maven') {
-      steps {
-        sh 'mvn -B clean package -Dmaven.test.skip=true'
-      }
+      steps { sh 'mvn -B clean package -Dmaven.test.skip=true' }
     }
 
     stage('Check SonarQube') {
       steps {
-        sh """
-          curl -fsS ${SONAR_HOST_URL}/api/system/status | grep -q '"status":"UP"'
-        """
+        sh "curl -fsS ${SONAR_HOST_URL}/api/system/status | grep -q '\"status\":\"UP\"'"
       }
     }
 
@@ -57,6 +55,18 @@ pipeline {
         timeout(time: 10, unit: 'MINUTES') {
           waitForQualityGate abortPipeline: true
         }
+      }
+    }
+
+    stage('Docker Check') {
+      steps {
+        sh '''
+          id
+          echo "DOCKER_HOST=$DOCKER_HOST"
+          ls -l /var/run/docker.sock || true
+          docker version
+          docker info
+        '''
       }
     }
 
