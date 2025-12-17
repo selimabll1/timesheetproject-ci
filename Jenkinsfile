@@ -16,7 +16,6 @@ pipeline {
     DOCKER_IMAGE = 'salima20033/timesheet-devops'
     DOCKER_CREDS_ID = 'dockerhub-creds'
     K8S_NAMESPACE = 'devops'
-    SONAR_HOST_URL = 'http://192.168.56.10:9000'
 
     DOCKER_HOST = 'unix:///var/run/docker.sock'
     DOCKER_TLS_VERIFY = ''
@@ -25,27 +24,31 @@ pipeline {
 
   stages {
     stage('Checkout') {
-      steps { checkout scm }
+      steps {
+        checkout scm
+      }
     }
 
     stage('Build Maven') {
-      steps { sh 'mvn -B clean package -Dmaven.test.skip=true' }
-    }
-
-    stage('Check SonarQube') {
       steps {
-        sh "curl -fsS ${SONAR_HOST_URL}/api/system/status | grep -q '\"status\":\"UP\"'"
+        sh 'mvn -B clean package -Dmaven.test.skip=true'
       }
     }
 
     stage('MVN SONARQUBE') {
       steps {
         withSonarQubeEnv('sonar') {
-          sh """
-            mvn -B -Dmaven.test.skip=true sonar:sonar \
-              -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
-              -Dsonar.host.url=${SONAR_HOST_URL}
-          """
+          sh '''
+            for i in $(seq 1 30); do
+              if curl -fsS "$SONAR_HOST_URL/api/system/status" | grep -q '"status":"UP"'; then
+                break
+              fi
+              sleep 5
+            done
+            curl -fsS "$SONAR_HOST_URL/api/system/status" | grep -q '"status":"UP"'
+
+            mvn -B -Dmaven.test.skip=true sonar:sonar -Dsonar.projectKey='"$SONAR_PROJECT_KEY"'
+          '''
         }
       }
     }
