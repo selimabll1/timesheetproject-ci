@@ -39,15 +39,14 @@ pipeline {
       steps {
         withSonarQubeEnv('sonar') {
           sh '''
-            for i in $(seq 1 30); do
-              if curl -fsS "$SONAR_HOST_URL/api/system/status" | grep -q '"status":"UP"'; then
-                break
-              fi
-              sleep 5
-            done
-            curl -fsS "$SONAR_HOST_URL/api/system/status" | grep -q '"status":"UP"'
+            set -eu
 
-            mvn -B -Dmaven.test.skip=true sonar:sonar -Dsonar.projectKey='"$SONAR_PROJECT_KEY"'
+            echo "SONAR_HOST_URL=$SONAR_HOST_URL"
+
+            curl --retry 30 --retry-connrefused --retry-delay 5 --max-time 10 -fsS \
+              "$SONAR_HOST_URL/api/system/status" | grep -q '"status":"UP"'
+
+            mvn -B -Dmaven.test.skip=true sonar:sonar -Dsonar.projectKey="$SONAR_PROJECT_KEY"
           '''
         }
       }
@@ -64,9 +63,8 @@ pipeline {
     stage('Docker Check') {
       steps {
         sh '''
-          id
+          set -eu
           echo "DOCKER_HOST=$DOCKER_HOST"
-          ls -l /var/run/docker.sock || true
           docker version
           docker info
         '''
