@@ -50,6 +50,13 @@ pipeline {
     stage('Docker Build & Push') {
       steps {
         script {
+          sh '''
+            if command -v minikube >/dev/null 2>&1; then
+              eval $(minikube docker-env -u) || true
+            fi
+            unset DOCKER_HOST DOCKER_TLS_VERIFY DOCKER_CERT_PATH MINIKUBE_ACTIVE_DOCKERD || true
+          '''
+
           def tagBuild = "${DOCKER_IMAGE}:${env.BUILD_NUMBER}"
           def tagLatest = "${DOCKER_IMAGE}:latest"
 
