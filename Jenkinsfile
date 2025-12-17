@@ -16,6 +16,7 @@ pipeline {
     DOCKER_IMAGE = 'salima20033/timesheet-devops'
     DOCKER_CREDS_ID = 'dockerhub-creds'
     K8S_NAMESPACE = 'devops'
+    SONAR_HOST_URL = 'http://192.168.56.10:9000'
   }
 
   stages {
@@ -31,17 +32,29 @@ pipeline {
       }
     }
 
+    stage('Check SonarQube') {
+      steps {
+        sh """
+          curl -fsS ${SONAR_HOST_URL}/api/system/status | grep -q '"status":"UP"'
+        """
+      }
+    }
+
     stage('MVN SONARQUBE') {
       steps {
         withSonarQubeEnv('sonar') {
-          sh "mvn -B -Dmaven.test.skip=true sonar:sonar -Dsonar.projectKey=${SONAR_PROJECT_KEY}"
+          sh """
+            mvn -B -Dmaven.test.skip=true sonar:sonar \
+              -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+              -Dsonar.host.url=${SONAR_HOST_URL}
+          """
         }
       }
     }
 
     stage('Quality Gate') {
       steps {
-        timeout(time: 5, unit: 'MINUTES') {
+        timeout(time: 10, unit: 'MINUTES') {
           waitForQualityGate abortPipeline: true
         }
       }
@@ -50,13 +63,6 @@ pipeline {
     stage('Docker Build & Push') {
       steps {
         script {
-          sh '''
-            if command -v minikube >/dev/null 2>&1; then
-              eval $(minikube docker-env -u) || true
-            fi
-            unset DOCKER_HOST DOCKER_TLS_VERIFY DOCKER_CERT_PATH MINIKUBE_ACTIVE_DOCKERD || true
-          '''
-
           def tagBuild = "${DOCKER_IMAGE}:${env.BUILD_NUMBER}"
           def tagLatest = "${DOCKER_IMAGE}:latest"
 
