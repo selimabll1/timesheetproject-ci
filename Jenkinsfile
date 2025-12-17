@@ -21,7 +21,7 @@ pipeline {
     COMPOSE_HTTP_TIMEOUT   = '600'
     DOCKER_BUILDKIT        = '1'
 
-    K8S_NAMESPACE          = 'workshop'
+    K8S_NAMESPACE          = 'devops'
     K8S_DEPLOYMENT_NAME    = 'spring-app'
   }
 
@@ -33,21 +33,23 @@ pipeline {
     stage('Detect Project Files') {
       steps {
         script {
-          sh 'pwd && ls -la'
+          sh '''#!/usr/bin/env bash
+            set -euo pipefail
+            pwd
+            ls -la
+          '''
 
           def pomPath = sh(script: "find . -maxdepth 4 -name pom.xml -print -quit", returnStdout: true).trim()
-          if (!pomPath) {
-            error("❌ pom.xml not found. Your repo checked out by Jenkins does not contain the Maven project (or it's deeper than 4 levels).")
-          }
+          if (!pomPath) error("❌ pom.xml not found in repo (maxdepth 4).")
+
           env.PROJECT_DIR = sh(script: "dirname '${pomPath}'", returnStdout: true).trim()
-          echo "✅ Detected PROJECT_DIR=${env.PROJECT_DIR}"
+          echo "✅ PROJECT_DIR=${env.PROJECT_DIR}"
 
           def dockerfilePath = sh(script: "find . -maxdepth 4 -name Dockerfile -print -quit", returnStdout: true).trim()
-          if (!dockerfilePath) {
-            error("❌ Dockerfile not found in repo. Add/commit a file named exactly 'Dockerfile' (no .txt) to Git.")
-          }
+          if (!dockerfilePath) error("❌ Dockerfile not found in repo. Add/commit a file named exactly 'Dockerfile' (no .txt).")
+
           env.DOCKERFILE_PATH = dockerfilePath
-          echo "✅ Detected DOCKERFILE_PATH=${env.DOCKERFILE_PATH}"
+          echo "✅ DOCKERFILE_PATH=${env.DOCKERFILE_PATH}"
         }
       }
     }
@@ -55,11 +57,10 @@ pipeline {
     stage('Build Maven') {
       steps {
         dir("${env.PROJECT_DIR}") {
-          sh '''
+          sh '''#!/usr/bin/env bash
             set -euo pipefail
             mvn -v
             mvn -B clean package -Dmaven.test.skip=true
-            ls -la target || true
             test -f target/timesheet-devops-1.0.jar
           '''
         }
@@ -70,7 +71,7 @@ pipeline {
       steps {
         dir("${env.PROJECT_DIR}") {
           withSonarQubeEnv('sonar') {
-            sh """
+            sh """#!/usr/bin/env bash
               set -euo pipefail
               echo "SONAR_HOST_URL=\$SONAR_HOST_URL"
               curl --retry 30 --retry-connrefused --retry-delay 5 --max-time 10 -fsS "\$SONAR_HOST_URL/api/system/status" | grep -q '"status":"UP"'
@@ -91,10 +92,10 @@ pipeline {
 
     stage('Docker Check') {
       steps {
-        sh '''
+        sh '''#!/usr/bin/env bash
           set -euo pipefail
           docker version
-          docker info > /dev/null
+          docker info >/dev/null
         '''
       }
     }
@@ -106,10 +107,10 @@ pipeline {
           env.TAG_LATEST = "${DOCKER_IMAGE}:latest"
         }
 
-        sh """
+        sh """#!/usr/bin/env bash
           set -euo pipefail
-          echo "Building with Dockerfile: ${env.DOCKERFILE_PATH}"
-          echo "Build context (PROJECT_DIR): ${env.PROJECT_DIR}"
+          echo "Dockerfile: ${env.DOCKERFILE_PATH}"
+          echo "Context:    ${env.PROJECT_DIR}"
           docker build --pull -f "${env.DOCKERFILE_PATH}" -t "${env.TAG_BUILD}" -t "${env.TAG_LATEST}" "${env.PROJECT_DIR}"
         """
       }
@@ -118,7 +119,7 @@ pipeline {
     stage('Docker Login') {
       steps {
         withCredentials([usernamePassword(credentialsId: DOCKER_CREDS_ID, usernameVariable: 'DH_USER', passwordVariable: 'DH_PASS')]) {
-          sh '''
+          sh '''#!/usr/bin/env bash
             set -euo pipefail
             echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
           '''
@@ -151,7 +152,7 @@ pipeline {
 
     stage('Deploy Kubernetes') {
       steps {
-        sh """
+        sh """#!/usr/bin/env bash
           set -euo pipefail
           minikube kubectl -- get ns ${K8S_NAMESPACE} >/dev/null 2>&1 || minikube kubectl -- create ns ${K8S_NAMESPACE}
 
