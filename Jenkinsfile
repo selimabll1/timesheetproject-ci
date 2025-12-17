@@ -6,22 +6,32 @@ pipeline {
     maven 'M2_HOME'
   }
 
+  options {
+    timestamps()
+    skipDefaultCheckout(true)
+  }
+
   environment {
+    DOCKER_REPO = "salima20033/timesheet-devops"
+
+    IMAGE_TAG   = "${BUILD_NUMBER}"
+    DOCKER_IMAGE = "${DOCKER_REPO}:${IMAGE_TAG}"
+    DOCKER_LATEST = "${DOCKER_REPO}:latest"
+
     K8S_NAMESPACE = "devops"
-    DOCKER_REPO   = "selimabll1/timesheet-app"   // change si ton repo dockerhub est différent
-    IMAGE_TAG     = "${BUILD_NUMBER}"
   }
 
   stages {
+
     stage('Checkout') {
       steps {
-        git branch: 'master', url: 'https://github.com/selimabll1/timesheetproject-ci.git'
+        checkout scm
       }
     }
 
     stage('Build Maven') {
       steps {
-        sh 'mvn -Dmaven.test.skip=true clean package'
+        sh 'mvn -B clean package -DskipTests'
       }
     }
 
@@ -29,9 +39,16 @@ pipeline {
       steps {
         withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DH_USER', passwordVariable: 'DH_PASS')]) {
           sh '''
+            set -e
+            docker version
+
             echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
-            docker build -t ${DOCKER_REPO}:${IMAGE_TAG} .
-            docker push ${DOCKER_REPO}:${IMAGE_TAG}
+
+            docker build -t "$DOCKER_IMAGE" -t "$DOCKER_LATEST" .
+            docker push "$DOCKER_IMAGE"
+            docker push "$DOCKER_LATEST"
+
+            docker logout
           '''
         }
       }
@@ -40,18 +57,30 @@ pipeline {
     stage('Deploy Kubernetes') {
       steps {
         sh '''
-          kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+          set -e
+          minikube status
 
-          kubectl apply -n ${K8S_NAMESPACE} -f k8s/mysql-deployment.yaml
-          kubectl apply -n ${K8S_NAMESPACE} -f k8s/spring-deployment.yaml
+          # namespace
+          minikube kubectl -- get ns "$K8S_NAMESPACE" >/dev/null 2>&1 || minikube kubectl -- create ns "$K8S_NAMESPACE"
 
-          kubectl set image -n ${K8S_NAMESPACE} deployment/spring-app spring-app=${DOCKER_REPO}:${IMAGE_TAG}
-          kubectl rollout status -n ${K8S_NAMESPACE} deployment/spring-app
+          # apply mysql + app manifests
+          minikube kubectl -- apply -n "$K8S_NAMESPACE" -f k8s/mysql-deployment.yaml
+          minikube kubectl -- apply -n "$K8S_NAMESPACE" -f k8s/spring-deployment.yaml
 
-          kubectl get pods -n ${K8S_NAMESPACE}
-          kubectl get svc  -n ${K8S_NAMESPACE}
+          # force deployment to use the newly built image tag
+          minikube kubectl -- set image deployment/spring-app spring-app="$DOCKER_IMAGE" -n "$K8S_NAMESPACE"
+          minikube kubectl -- rollout status deployment/spring-app -n "$K8S_NAMESPACE" --timeout=180s
+
+          minikube kubectl -- get pods -n "$K8S_NAMESPACE"
+          minikube kubectl -- get svc  -n "$K8S_NAMESPACE"
         '''
       }
+    }
+  }
+
+  post {
+    always {
+      archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
     }
   }
 }
