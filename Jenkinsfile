@@ -38,7 +38,7 @@ pipeline {
       steps {
         sh '''
           set -eu
-          mvn -B clean package -DskipTests
+          mvn -B clean package -Dmaven.test.skip=true
           ls -lh target/*.jar
         '''
       }
